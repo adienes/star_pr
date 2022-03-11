@@ -1,16 +1,5 @@
 using Distributions
 
-function normalize_scores(S)
-    nzrows = findall(i -> !i, iszero.(eachrow(S)))
-    nzcols = findall(i -> !i, iszero.(eachcol(S)))
-    S = S[nzrows, nzcols]
-
-    mins = mapslices(r -> minimum(r), S, dims=2)
-    maxs = mapslices(r -> maximum(r), S, dims=2)
-
-    return (S .- mins) ./ (maxs - mins)
-end
-
 function cdf_transform(S)
     V = size(S)[1]
 

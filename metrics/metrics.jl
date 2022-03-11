@@ -16,59 +16,49 @@ using JuMP
 #empirically the fastest...
 #compared to GLPK, COSMO, Cbc, Ipopt, Ipopt
 using Clp
-#using COSMO
 using Ipopt
 
-function get_metrics(S, W, V, C, k)
-    S ./= maximum(S)
-    #ALL THESE METRICS SHOULD BE NORMALIZED BY THE BEHAVIOR OF A RANDOM SELECTION
-    #this will make it much more domain robust
+meanlinutil(S::Matrix{Float64}, W::Vector{Int}) = mean(sum(S[:, W], dims=2))
+varlinutil(S::Matrix{Float64}, W::Vector{Int}) = var(sum(S[:, W], dims=2))
+meanlogutil(S::Matrix{Float64}, W::Vector{Int}) = mean(log1p.(sum(S[:, W], dims=2)))
+varlogutil(S::Matrix{Float64}, W::Vector{Int}) = var(sum(S[:, W], dims=2))
+meanmaxutil(S::Matrix{Float64}, W::Vector{Int}) = mean(maximum(S[:, W], dims=2))
+varmaxutil(S::Matrix{Float64}, W::Vector{Int}) = var(maximum(S[:, W], dims=2))
 
-    m = Dict()
+meanpolarized(S::Matrix{Float64}, W::Vector{Int}) = mean(mapslices(c -> var(c), S[:, W], dims=1))
+varpolarized(S::Matrix{Float64}, W::Vector{Int}) = var(mapslices(c -> var(c), S[:, W], dims=1))
+minpolarized(S::Matrix{Float64}, W::Vector{Int}) = minimum(mapslices(c -> var(c), S[:, W], dims=1))
+maxpolarized(S::Matrix{Float64}, W::Vector{Int}) = maximum(mapslices(c -> var(c), S[:, W], dims=1))
 
-    #Utilitarian metrics
-    m["Expected Linear Utility"] = mean(sum(S[:, W], dims=2))
-    # m["Variance Linear Utility"] = var(sum(S[:, W], dims=2))
-    # m["Expected Log Utility"] = mean(log1p.(sum(S[:, W], dims=2)))
-    # m["Variance Log Utility"] = var(sum(S[:, W], dims=2))
-    m["Expected Max Utility"] = mean(maximum(S[:, W], dims=2))
-    # m["Variance Max Utility"] = var(maximum(S[:, W], dims=2))
+losercapture(S::Matrix{Float64}, W::Vector{Int}) = maximum(sum(S .* (S .> sum(S[:, W], dims=2)), dims=1)) / V
+extrawinnerutil(S::Matrix{Float64}, W::Vector{Int}) = maximum(sum(clamp.((S .- sum(S[:, W], dims=2)), 0, 1), dims=1)) / V
+rankreduction(S::Matrix{Float64}, W::Vector{Int}) = effective_rank(S[:, W]) / effective_rank(S)
+sortitionefficiency(S::Matrix{Float64}, W::Vector{Int}) = sortition_efficiency(S, W, k)
 
-    # m["Expected Winner Polarization"] = mean(mapslices(c -> var(c), S[:, W], dims=1))
-    # m["Variance Winner Polarization"] = var(mapslices(c -> var(c), S[:, W], dims=1))
-    # m["Least Polarized Winner"] = minimum(mapslices(c -> var(c), S[:, W], dims=1))
-    # m["Most Polarized Winner"] = maximum(mapslices(c -> var(c), S[:, W], dims=1))
-    
-    # m["Most Blocking Loser Capture"] = maximum(sum(S .* (S .> sum(S[:, W], dims=2)), dims=1)) / V
-    # m["Average Utility Gain Extra Winner"] = maximum(sum(clamp.((S .- sum(S[:, W], dims=2)), 0, 1), dims=1)) / V
-    # m["Effective Rank Reduction Ratio"] = effective_rank(S[:, W]) / effective_rank(S)
-    # m["Sortition Efficiency"] = sortition_efficiency(S, W, k)
+#also Tukey depth min/max/mean/var would be cool to look at per winner
 
-    #also Tukey depth min/max/mean/var would be cool to look at per winner
+maxphrag(S::Matrix{Float64}, W::Vector{Int}) = maximin_support(stochastic_bullets(S), W)
+varphrag(S::Matrix{Float64}, W::Vector{Int}) = load_dispersion(stochastic_bullets(S), W)
+coreprice(S::Matrix{Float64}, W::Vector{Int}) = (stable_price(stochastic_bullets(S), W) > 0)
 
-    #m["Maximin Support"] = maximin_support(stochastic_bullets(S), W, k)
-    #m["Stable Price"] = stable_price(stochastic_bullets(S), W, k)
-    #m["Load Dispersion"] = load_dispersion(stochastic_bullets(S), W, k)
-
-    #These metrics have a geometric interpretation. Also they are in the model
-    #like MAV, where a vote for all candidates means specifically ALL candidates, not a subset
-    # w_oz = [c ∈ W ? 1 : 0 for c in 1:C]
-    # m["Expected Cosine Distance"] = mean(mapslices(b -> cosine_dist(b, w_oz), S, dims=2))
-    # m["Variance Cosine Distance"] = var(mapslices(b -> cosine_dist(b, w_oz), S, dims=2))
-    # m["Expected Euclidean Distance"] = mean(mapslices(b -> euclidean(b, w_oz), S, dims=2))
-    # m["Variance Euclidean Distance"] = var(mapslices(b -> euclidean(b, w_oz), S, dims=2))
-    return m
-end
+#These metrics have a geometric interpretation. Also they are in the model
+#like MAV, where a vote for all candidates means specifically ALL candidates, not a subset
+# w_oz = [c ∈ W ? 1 : 0 for c in 1:C]
+# m["Expected Cosine Distance"] = mean(mapslices(b -> cosine_dist(b, w_oz), S, dims=2))
+# m["Variance Cosine Distance"] = var(mapslices(b -> cosine_dist(b, w_oz), S, dims=2))
+# m["Expected Euclidean Distance"] = mean(mapslices(b -> euclidean(b, w_oz), S, dims=2))
+# m["Variance Euclidean Distance"] = var(mapslices(b -> euclidean(b, w_oz), S, dims=2))
 
 
 function committee_is_preferred(A, S, T)
     return (schulze_committee_preference(A, S, T) - schulze_committee_preference(A, T, S)) > 0
 end
 
-function maximin_support(A, W, k; initial_budgets = ones(size(A)[1]))
+function maximin_support(A, W; initial_budgets = ones(size(A)[1]))
     #=
     WARNING: do not expect reasonable results if A is not an approval matrix.
     =#
+    k = length(W)
     V = size(A)[1]
     wa = A[:, W]
 
@@ -88,10 +78,11 @@ function maximin_support(A, W, k; initial_budgets = ones(size(A)[1]))
     return rv
 end
 
-function stable_price(A, W, k; initial_budgets = ones(size(A)[1]))
+function stable_price(A, W; initial_budgets = ones(size(A)[1]))
     #=
     WARNING: do not expect reasonable results if A is not an approval matrix.
     =#
+    k = length(W)
     V,C = size(A)
     L = [i for i in 1:C if i ∉ W]
 
@@ -124,10 +115,11 @@ function stable_price(A, W, k; initial_budgets = ones(size(A)[1]))
     end
 end
 
-function load_dispersion(A, W, k; initial_budgets = ones(size(A)[1]))
+function load_dispersion(A, W; initial_budgets = ones(size(A)[1]))
     #=
     WARNING: do not expect reasonable results if A is not an approval matrix.
     =#
+    k = length(W)
     V = size(A)[1]
     wa = A[:, W]
 

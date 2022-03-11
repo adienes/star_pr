@@ -79,7 +79,7 @@ function single_transfer_votes!(S, D)
     relative_contribution = 0
     surplus_factors = 0
     while true
-        _S = S[:, D.remaining]
+        _S = @view S[:, D.remaining]
 
         #0-1 array of where voter's current support is
         preferred = (_S .== mapslices(x -> maximum(x), _S, dims=2))
@@ -176,7 +176,7 @@ function spend_score_scaling!(S, D)
     w = D.remaining[wix]
 
     surplus_factor = max(supports[w] / D.q, 1)
-    D.ballot_weights = max.(0, (D.ballot_weights - weighted_scores[:, w] / surplus_factor))
+    D.ballot_weights .= max.(0, (D.ballot_weights - weighted_scores[:, w] / surplus_factor))
 
     return w
 end
