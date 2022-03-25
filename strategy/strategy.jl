@@ -25,26 +25,6 @@ function cdf_transform(S)
     return (Matrix(transpose(hcat(transformed...))), ballot_budgets)
 end
 
-function in_sincere_mix(S, k; strategic_percentage = 0.5, strategic_distribution=[0.28,0.36,0.36])
-    V = size(S)[1]
-
-    is_strat = Bernoulli(strategic_percentage)
-    which_strat = Multinomial(1, strategic_distribution)
-    sub = []
-    frb = []
-    tkb = []
-    for v in 1:V
-        !(rand(is_strat)) && continue
-        push!([sub,frb,tkb][findfirst(Bool.rand(which_strat))], v)
-    end
-
-    S_trat = stochastic_bullets(S; voters=sub)
-    S_trat = frontrunner_bullets(S_trat, k; voters=frb)
-    S_trat = topk_bullets(S_trat, k; voters=tkb)
-    return S_trat
-end
-
-
 function stochastic_bullets(S; voters=[])
     """
     A very simple min-max strategy where every voter picks a random approval threshold
@@ -59,23 +39,17 @@ function stochastic_bullets(S; voters=[])
     return S_trat
 end
 
-function frontrunner_bullets(S, k; voters=[])
+function frontrunner_bullets(S, W; voters=[])
     """
-    Another very simple strategy where each voter identifies the front-runners
-    and min-maxes accordingly.
+    Another very simple strategy where each voter clairvoyantly identifies
+    the front-runners and min-maxes according to their average winner utility.
     """
-    V,C = size(S)
-    length(voters) == 0 && begin voters = 1:V end
-
-    frontrunners = partialsortperm(sum(S, dims=1), k)
-
     S_trat = copy(S)
+    V,C = size(S_trat)
     for v in voters
         S_trat[v, :] .= zeros(C)
-        favored_frontrunner_utility = maximum(S[v, frontrunners])
-        favored_frontrunner_utility == 0 && begin favored_frontrunner_utility = eps() end
-        
-        S_trat[v, S[v, :] .≥ favored_frontrunner_utility] .= 1
+        adjusted_mean_frontrunner_utility = (1 + sum(S[v, W]))/(1 + length(W))
+        S_trat[v, S[v, :] .≥ adjusted_mean_frontrunner_utility] .= 1
     end
     return S_trat
 end

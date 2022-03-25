@@ -8,12 +8,11 @@ struct SpatialParty{N} <: Party
     ω::Float64 #proportion of strategic voters
 
     function SpatialParty{N}() where {N}
-        μ = (rand(N) + rand(N)) .- 1 #slight centrist bias on [-1, +1]
-        σ = (rand(N) + rand(N))*0.1 #tip-to-tip about 20% utility
+        μ = (rand(N) + rand(N) + rand(N))*2/3 .- 1 #centrist bias on [-1, +1]
+        σ = (rand(N) + rand(N))*0.06
 
-        λ = (rand()*0.6)+0.2
-        ω = rand()
-        new{N}(μ, σ, λ, ω)
+        λ = rand()*0.3 + 0.12
+        new{N}(μ, σ, λ)
     end
 end
 
@@ -23,7 +22,7 @@ mutable struct SpatialElection{N} <: Election
     latentvoters::Vector{Vector{Float64}}
     latentcands::Vector{Vector{Float64}}
 
-    strategicbehavior::Vector{Int}
+    strategicbehavior::Vector{Bool}
     partyaffiliation::Vector{Int}
     
     S::Matrix{Float64}
@@ -35,13 +34,14 @@ mutable struct SpatialElection{N} <: Election
 end
 
 function getvoter(P::SpatialParty)
-    return (rand.([Normal(x...) for x in zip(P.μ, P.σ)]), rand(Bernoulli(P.ω)))
+    return rand.([Normal(x...) for x in zip(P.μ, P.σ)])
 end
 
 function getcands(B::SpatialElection)
     E = B.E
-    party_sampler = Categorical(E.Q)
-    return [getvoter(E.L[rand(party_sampler)])[1] for j in 1:E.C]
+    degressive_population = sqrt.(E.Q)/sum(sqrt.(E.Q))
+    party_sampler = Categorical(degressive_population)
+    return [getvoter(E.L[rand(party_sampler)]) for j in 1:E.C]
 end
 
 function ξ(P::SpatialParty, v, c)

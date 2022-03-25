@@ -1,5 +1,6 @@
 include("./metrics/metrics.jl")
 include("./models/spatial.jl")
+include("./models/mallows.jl")
 include("./rules/quota_spending.jl")
 include("./rules/other_rules.jl")
 
@@ -8,6 +9,36 @@ using Distributions
 using LinearAlgebra
 using Random
 
+methodnames = Dict(
+		"MES" => method_equal_shares,
+		"SSS" => spent_score_scaling,
+		"AS" => allocated_score,
+		"EPM" => enestrom_phragmen_margins,
+		"STN" => stratified_sortition,
+	)
+	
+	metricnames = Dict(
+		"Linear Utility" => meanlinutil,
+		"Maximum Utility" => meanmaxutil,
+		"Loser Capture" => losercapture
+	)
+
+	df = DataFrame(merge(
+		Dict(
+		"hpuid" => Int[],
+		"methodname" => String[],
+		"stratpct" => Float64[]
+		),
+		Dict(
+			[s => Float64[] for s in keys(metricnames)]
+		)
+	))
+	
+(numwinners, numvoters, numcands) = (5, 2000, 50)
+poller = MallowsElection(numwinners, numvoters, numcands)
+cast!(poller)
+
+display(poller)
 function main()
     
     metric_keys = []

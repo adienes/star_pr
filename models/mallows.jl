@@ -1,38 +1,35 @@
 include("./baseparty.jl")
 
 struct MallowsParty <: Party
-    α::Vector{Float64} #reference ranking
+    α::Vector{Int} #reference ranking
     ϕ::Float64 #dispersion probability
 
     λ::Float64 #natural disposition
-    ω::Float64 #proportion of strategic voters
-
-    function MallowsParty(; X = 30, Y = 10)
+    function MallowsParty(; X = 20, Y = 8)
         #these parameters imply each voter ranks around Y candidates
-        #parties on average overlap by Y^2 / X ~3 candidates
-        α = shuffle(unique(rand(X, Y)))
-        ϕ = (rand() + rand() + rand())/3
+        #parties on average overlap by Y^2 / X candidates
+        α = shuffle(unique(rand(1:X, Y)))
+        ϕ = (rand() + rand())/2
         
-        λ = sqrt(rand())
-        ω = rand()
-        new(α, ϕ, λ, ω)
+        λ = 1/(2 - rand())
+        new(α, ϕ, λ)
     end
 end
 
 mutable struct MallowsElection <: Election
     E::PartyElectorate
 
-    latentvoters::Vector{Vector{Float64}}
-    latentcands::Vector{Vector{Float64}}
+    latentvoters::Vector{Vector{Int}}
+    latentcands::Vector{Int}
 
-    strategicbehavior::Vector{Int}
+    strategicbehavior::Vector{Bool}
     partyaffiliation::Vector{Int}
     
     S::Matrix{Float64}
     function MallowsElection(k, V, C)
         E = PartyElectorate(k, V, C, randparties(()->MallowsParty()))
 
-        new(E, [zeros(N) for i in 1:V], [zeros(N) for j in 1:C], zeros(V), zeros(V), zeros(V, C))
+        new(E, [], [], [], [], Array{Float64}(undef, 0, 0))
     end
 end
 
@@ -45,11 +42,11 @@ function getvoter(P::MallowsParty)
     end
     append!(r, shuffle(setdiff(1:30, r)))
 
-    return (r, rand(Bernoulli(P.ω)))
+    return r
 end
 
 function getcands(B::MallowsElection)
-    return union([B.E.L[j].α for j in 1:B.E.M]...)
+    return collect(1:B.E.C)
 end
 
 function ξ(P::MallowsParty, v, c)

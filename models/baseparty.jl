@@ -6,6 +6,7 @@ abstract type Party end
 abstract type Election end
 
 struct PartyElectorate
+    #try to use "callable types" as well...
     hpuid::Int #unique identifier for following parameters
 
     k::Int #number of winners
@@ -16,31 +17,41 @@ struct PartyElectorate
     Q::Vector{Float64} #proportions of voters sampled from party
     L::Vector{Party}
 
-    r::Float64  #population proportion of strategic voters
+    ω::Float64  #population proportion of strategic voters
     function PartyElectorate(k, V, C, partydata)
         hpuid = floor(Int, rand()*10^22)
 
         (M, Q, L) = partydata
-        r = sum(*(x...) for x in zip(Q, [P.ω for P in L]))
+        ω = rand()
 
-        new(hpuid, k, V, C, M, Q, L, r)
+        new(hpuid, k, V, C, M, Q, L, ω)
     end
+end
+
+function randparties(partysampler::Function; rangepartynum = 2:5)
+    M = rand([j for j in rangepartynum])
+    Q = rand(Dirichlet(ones(M)*8/M))
+    L = [partysampler() for j in 1:M]
+    return (M, Q, L)
 end
 
 function cast!(B::Election)
     E::PartyElectorate = B.E
 
     party_sampler = Categorical(E.Q)
+    strat_sampler = Bernoulli(E.ω)
 
     voter_party::Vector{Int} = []
-    voter_strategy::Vector{Bool} = []
     voter_latent::Vector{Vector{Float64}} = []
+    voter_strategy::Vector{Bool} = []
     for i=1:E.V
         party_affiliation = rand(party_sampler)
 
         push!(voter_party, party_affiliation)
 
-        (vl, vs) = getvoter(E.L[party_affiliation])
+        vl = getvoter(E.L[party_affiliation])
+        vs = rand(strat_sampler)
+
         push!(voter_strategy, vs)
         push!(voter_latent, vl)
     end
@@ -50,20 +61,12 @@ function cast!(B::Election)
     for j=1:E.C, i=1:E.V
         S_incere[i, j] = ξ(E.L[voter_party[i]], voter_latent[i], cands_latent[j])
     end
-    S_incere = normalizescores(S_incere)
 
     B.latentvoters = voter_latent
     B.latentcands = cands_latent
     B.strategicbehavior = voter_strategy
     B.partyaffiliation = voter_party
     B.S = S_incere
-end
-
-function randparties(partysampler::Function; rangepartynum = 1:7)
-    M = rand([j for j in rangepartynum])
-    Q = rand(Dirichlet(ones(M)))
-    L = [partysampler() for j in 1:M]
-    return (M, Q, L)
 end
 
 #Party-based models above
@@ -117,9 +120,9 @@ function telos_linf_unichlet(V, C)
 end
 
 function normalizescores(S)
-    nzrows = findall(i -> !i, iszero.(eachrow(S)))
-    nzcols = findall(i -> !i, iszero.(eachcol(S)))
-    S = S[nzrows, nzcols]
+    #nzrows = findall(i -> !i, iszero.(eachrow(S)))
+    #nzcols = findall(i -> !i, iszero.(eachcol(S)))
+    #S = S[nzrows, nzcols]
 
     mins = mapslices(r -> minimum(r), S, dims=2)
     maxs = mapslices(r -> maximum(r), S, dims=2)

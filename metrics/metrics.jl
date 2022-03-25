@@ -20,7 +20,7 @@ using Ipopt
 
 meanlinutil(S::Matrix{Float64}, W::Vector{Int}) = mean(sum(S[:, W], dims=2))
 varlinutil(S::Matrix{Float64}, W::Vector{Int}) = var(sum(S[:, W], dims=2))
-meanlogutil(S::Matrix{Float64}, W::Vector{Int}) = mean(log1p.(sum(S[:, W], dims=2)))
+meanlogutil(S::Matrix{Float64}, W::Vector{Int}) = mean(log1p.(sum(S[:, W], dims=2).-1/2))
 varlogutil(S::Matrix{Float64}, W::Vector{Int}) = var(sum(S[:, W], dims=2))
 meanmaxutil(S::Matrix{Float64}, W::Vector{Int}) = mean(maximum(S[:, W], dims=2))
 varmaxutil(S::Matrix{Float64}, W::Vector{Int}) = var(maximum(S[:, W], dims=2))
@@ -30,8 +30,11 @@ varpolarized(S::Matrix{Float64}, W::Vector{Int}) = var(mapslices(c -> var(c), S[
 minpolarized(S::Matrix{Float64}, W::Vector{Int}) = minimum(mapslices(c -> var(c), S[:, W], dims=1))
 maxpolarized(S::Matrix{Float64}, W::Vector{Int}) = maximum(mapslices(c -> var(c), S[:, W], dims=1))
 
-losercapture(S::Matrix{Float64}, W::Vector{Int}) = maximum(sum(S .* (S .> sum(S[:, W], dims=2)), dims=1)) / V
-extrawinnerutil(S::Matrix{Float64}, W::Vector{Int}) = maximum(sum(clamp.((S .- sum(S[:, W], dims=2)), 0, 1), dims=1)) / V
+defectingquota(S::Matrix{Float64}, W::Vector{Int}) = maximum(sum(S .> sum(S[:, W], dims=2), dims=1)) * length(W) / size(S, 1)
+
+lindefection(S::Matrix{Float64}, W::Vector{Int}) = instability(S, W, sum)
+maxdefection(S::Matrix{Float64}, W::Vector{Int}) = instability(S, W, maximum)
+
 rankreduction(S::Matrix{Float64}, W::Vector{Int}) = effective_rank(S[:, W]) / effective_rank(S)
 sortitionefficiency(S::Matrix{Float64}, W::Vector{Int}) = sortition_efficiency(S, W, k)
 
@@ -49,6 +52,46 @@ coreprice(S::Matrix{Float64}, W::Vector{Int}) = (stable_price(stochastic_bullets
 # m["Expected Euclidean Distance"] = mean(mapslices(b -> euclidean(b, w_oz), S, dims=2))
 # m["Variance Euclidean Distance"] = var(mapslices(b -> euclidean(b, w_oz), S, dims=2))
 
+
+function komolgorovsmirnov(a::Vector{Float64}, b::Vector{Float64})
+    A = length(a)
+    B = length(b)
+    x = sort(vcat(vcat.(a,1), vcat.(b,2)))
+    
+    pct_seen_a = 0
+    pct_seen_b = 0
+    
+    cdf_dist = 0
+    prev = x[1][1]
+    for i in 1:(A+B)
+        (value, j) = x[i]
+        if value != prev
+            cdf_dist = max(cdf_dist, abs(pct_seen_b - pct_seen_a))
+        end
+
+        j == 1 && begin pct_seen_a += 1/A end
+        j == 2 && begin pct_seen_b += 1/B end
+        prev = value
+    end
+    cdf_dist = max(cdf_dist, abs(pct_seen_b - pct_seen_a))
+    return cdf_dist
+end
+
+function instability(S::Matrix{Float64}, W::Vector{Int}, ξ::Function)
+    
+    #budget way to compute core...
+    V,C = size(S)
+    utils = ξ(S[:, W], dims=2)
+
+    unstablecoalition = maximum(sum(S .> utils, dims=1)) * length(W) / V
+    for p in 1:C, q in 1:C
+        p == q && continue
+        
+        @views pairblocks = sum(ξ(S[:, [p,q]], dims=2) .> utils) * length(W) / (2*V)
+        unstablecoalition = max(unstablecoalition, pairblocks)
+    end
+    return unstablecoalition
+end
 
 function committee_is_preferred(A, S, T)
     return (schulze_committee_preference(A, S, T) - schulze_committee_preference(A, T, S)) > 0
