@@ -11,7 +11,7 @@ struct SpatialParty{N} <: Party
         μ = (rand(N) + rand(N)) .- 1
         σ = (rand(N)) .* 0.06
 
-        λ = rand()*0.8+0.04
+        λ = rand()*0.4+0.04
         new{N}(μ, σ, λ)
     end
 end

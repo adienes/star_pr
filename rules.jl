@@ -112,18 +112,6 @@ function SSQ(S, k)
     return wset
 end
 
-
-
-function firstpreferences(budgets, T)
-    #0-1 array of where voter's current support is
-    preferred = (T .== mapslices(x -> maximum(x), T, dims=2))
-
-    #what fraction of a voter's remaining ballot weight should be assigned
-    relativecontribution = preferred ./ sum(preferred, dims=2)
-
-    return vec(sum(budgets .* relativecontribution, dims=1))
-end
-
 function STV(S, k; q=fld(size(S, 1), (k+1))+1)
     #error("bad implementatin")
     V,C = size(S)
