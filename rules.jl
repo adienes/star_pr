@@ -1,5 +1,16 @@
-#export STN, AS, SSS, SMR, MES_ExLR, MES_ExMQ, STV, SDV, SSQ
+#export STN, AS, SSS, SMR, EAZ, MES_ExLR, MES_ExMQ, STV, SDV, SSQ
+using SpecialFunctions
+using Combinatorics
 
+include("metrics/metrics.jl")
+function H(utils)
+    return digamma(1 + sum(utils)) + (1 - digamma(2))
+end
+#==============================================================#
+
+
+
+#==============================================================#
 struct Tally
     budgets::Vector{Float64}
     S::Matrix{Float64}
@@ -13,13 +24,48 @@ struct Tally
     end
 end
 
+function harmopt(S, k; q=nothing)
+    besthscore = 0
+    bestcom = nothing
+    for potential_committee in combinations(1:size(S, 2), k)
+        if harmonicutil(S, potential_committee) > besthscore
+            besthscore = harmonicutil(S, potential_committee)
+            bestcom = potential_committee
+        end
+    end
+    return bestcom
+end
+
+function MMZ(S, k; q=nothing)
+    C = size(S, 2)
+    wset::Vector{Int} = []
+    for _ = 1:k
+        bestmm = 0
+        bestcand = 0
+        for j = 1:C
+            j ∈ wset && continue
+            val = maximinsupport(S, [wset; j])
+            if val > bestmm
+                bestmm = val
+                bestcand = j
+            end
+        end
+        push!(wset, bestcand)
+    end
+    return wset
+end
+
+function BS(S, k)
+    return collect(partialsortperm(vec(sum(S; dims=1)), 1:k; rev=true))
+end
+
 function STN(S, k)
     #note that clones are allowed
     dictators = rand(1:size(S, 1), k)
     return [argmax(S[i, :] for i in dictators)]
 end
 
-function SDV(S, k; A=1, B=0, E=1)
+function SDV(S, k; A=1, B=0, E=1, q=nothing)
     #default params are Jefferson RRV
     #for Webster SDV, set A=0, B=1, E=2
     V,C = size(S)
@@ -66,7 +112,20 @@ function SSQ(S, k)
     return wset
 end
 
+
+
+function firstpreferences(budgets, T)
+    #0-1 array of where voter's current support is
+    preferred = (T .== mapslices(x -> maximum(x), T, dims=2))
+
+    #what fraction of a voter's remaining ballot weight should be assigned
+    relativecontribution = preferred ./ sum(preferred, dims=2)
+
+    return vec(sum(budgets .* relativecontribution, dims=1))
+end
+
 function STV(S, k; q=fld(size(S, 1), (k+1))+1)
+    #error("bad implementatin")
     V,C = size(S)
     budgets::Vector{Float64} = ones(V)
     wset::Vector{Int} = []
@@ -81,13 +140,12 @@ function STV(S, k; q=fld(size(S, 1), (k+1))+1)
         end
 
         wix = argmax(fp)
-        if maximum(fp) ≥ q
-            subs = S[:, remaining]
-            preferred = (subs.== mapslices(x -> maximum(x), subs, dims=2))
-            winnercontribution = (preferred ./ sum(preferred, dims=2))[:, wix]
-            surplus = max(sum(winnercontribution) / q, 1)
-            budgets .*= (1 - 1/surplus) 
-        end
+
+        subs = S[:, remaining]
+        preferred = (subs.== mapslices(x -> maximum(x), subs, dims=2))
+        winnercontribution = budgets .* (preferred ./ sum(preferred, dims=2))[:, wix]
+        surplus = max(sum(winnercontribution) / q, 1)
+        budgets .-= (winnercontribution ./ surplus)
 
         w = remaining[wix]
         push!(wset, w)
@@ -112,17 +170,109 @@ function SMR(S, k; q=fld(size(S, 1), (k+1))+1)
     function SMR_select(tally::Tally)
         (; budgets, T, q) = tally
         monroeutilities = map((j) -> monroeutility(budgets, j, q), eachcol(T))
-        tmr = findall(j -> j == maximum(monroeutilities), monroeutilities)
-        if length(tmr) > 1
-            w = tmr[argmax(linearutilities(budgets, T[:, tmr]))]
-        else
-            w = first(tmr)
-        end
-        return w
+        tied = findall(monroeutilities .== maximum(monroeutilities))
+        return tied[argmax(linearutilities(budgets, T[:, tied]))]        
+
     end
-    SMR_reweight!(tally::Tally, w) = allocate!(tally.budgets, tally.T[:, w], q; current=false)
+    SMR_reweight!(tally::Tally, w) = allocate!(tally.budgets, tally.T[:, w], q)
     return sequentially(S, q, k, SMR_select, SMR_reweight!)
 end
+
+function EAZ1(S, k; q=fld(size(S, 1), (k+1))+1)
+    function EAZ_select(tally::Tally)
+        (; budgets, T, q) = tally
+        rhos = map((j) -> bucklinprice(budgets, j, q), eachcol(T))
+        ρ = maximum(rhos)
+        tied = findall(rhos .== ρ)
+        ρ == 0 && begin ρ += eps() end
+        return tied[argmax(linearutilities(budgets, T[:, tied] .≥ ρ))]
+    end
+    function EAZ_reweight!(tally::Tally, w)
+        (; budgets, T, q) = tally
+        ρ = bucklinprice(budgets, T[:, w], q)
+        ρ == 0 && begin ρ += eps() end
+        enphrlinear!(budgets, T[:, w] .≥ ρ, q)
+    end
+    return sequentially(S, q, k, EAZ_select, EAZ_reweight!)
+end
+
+function EAZ2(S, k; q=fld(size(S, 1), (k+1))+1)
+    function EAZ_select(tally::Tally)
+        (; budgets, T, q) = tally
+        rhos = map((j) -> bucklinprice(budgets, j, q), eachcol(T))
+        ρ = maximum(rhos)
+        tied = findall(rhos .== ρ)
+        ρ == 0 && begin ρ += eps() end
+        return tied[argmax(linearutilities(budgets, T[:, tied] .≥ ρ))]
+    end
+    function EAZ_reweight!(tally::Tally, w)
+        (; budgets, T, q) = tally
+        ρ = bucklinprice(budgets, T[:, w], q)
+        ρ == 0 && begin ρ += eps() end
+        spendequally!(budgets, T[:, w] .≥ ρ, q)
+    end
+    return sequentially(S, q, k, EAZ_select, EAZ_reweight!)
+end
+
+function DRB1(S, k; q=fld(size(S, 1), (k+1))+1)
+    #linear select, bucklin mes reweight
+    function DRB_combined!(tally::Tally)
+        (; budgets, T, q) = tally
+        w = argmax(linearutilities(budgets, T))
+        d = bucklinprice(budgets, T[:, w], q)
+        iszero(d) && begin d += eps() end
+
+        spendequally!(budgets, (T .≥ d)[:, w], q)
+        return w
+    end
+    return sequentially(S, q, k, DRB_combined!, (::Tally, ::Int)->nothing)
+end
+
+function DRB2(S, k; q=fld(size(S, 1), (k+1))+1)
+    #runoff only when to exhaust
+    function DRB_combined!(tally::Tally)
+        (; budgets, T, q) = tally
+        w = argmax(linearutilities(budgets, T))
+        d = bucklinprice(budgets, T[:, w], q)
+
+        if iszero(d)
+            a,b = partialsortperm(linearutilities(budgets, T), 1:2; rev=true)
+            m = majoritymargin(budgets, T[:, a], T[:, b])
+            if m > 0
+                w = a
+            else
+                w = b
+            end
+            d = bucklinprice(budgets, T[:, w], q)
+            d == 0 && begin d += eps() end
+        end
+
+        spendequally!(budgets, (T .≥ d)[:, w], q)
+        return w
+    end
+    return sequentially(S, q, k, DRB_combined!, (::Tally, ::Int)->nothing)
+end
+
+function DRB3(S, k; q=fld(size(S, 1), (k+1))+1)
+    #runoff every seat
+    function DRB_combined!(tally::Tally)
+        (; budgets, T, q) = tally
+        w = 0
+        a,b = partialsortperm(linearutilities(budgets, T), 1:2; rev=true)
+        m = majoritymargin(budgets, T[:, a], T[:, b])
+        if m > 0
+            w = a
+        else
+            w = b
+        end
+        d = bucklinprice(budgets, T[:, w], q)
+        iszero(d) && begin d += eps() end
+        spendequally!(budgets, (T .≥ d)[:, w], q)
+        return w
+    end
+    return sequentially(S, q, k, DRB_combined!, (::Tally, ::Int)->nothing)
+end
+
 
 function MES_ExLR(S, k; q=fld(size(S, 1), (k+1))+1)
     function MES_ExLR_select(tally::Tally)
@@ -131,7 +281,7 @@ function MES_ExLR(S, k; q=fld(size(S, 1), (k+1))+1)
         if isinf(minimum(rhos))
             w = argmax(linearutilities(budgets, T))
         else
-            w = argmin(rhos)
+            w = argmin(rhos) #assume ties rare
         end
         return w
     end
@@ -166,12 +316,18 @@ function sequentially(S, q, k, select, reweight!)
     tally = Tally(S, q, k)
     for _ in 1:k
         w = select(tally)
-        push!(tally.wset, w)
         reweight!(tally, w)
+        push!(tally.wset, w)
         tally.T[:, w] .= 0
     end
 
     return tally.wset
+end
+
+function majoritymargin(budgets, ui, uj)
+    ipref = ui .> uj
+    jpref = uj .> ui
+    return sum(budgets .* ipref) - sum(budgets .* jpref)
 end
 
 function uniformprice(budgets, utils, q)
@@ -205,11 +361,22 @@ function uniformprice(budgets, utils, q)
     return ρ
 end
 
+function bucklinprice(budgets, utils, q)
+    suppsorted = sortperm(utils, rev=true)
+    edgevoter = findfirst(r -> r ≥ q, cumsum(budgets[suppsorted]))
+    if isnothing(edgevoter)
+        edgeutil = 0
+    else
+        edgeutil = utils[suppsorted[edgevoter]]
+    end
+    return edgeutil
+end
+
 function monroeutility(budgets, utils, q)
     suppsorted = sortperm(utils, rev=true)
     edgevoter = findfirst(r -> r ≥ q, cumsum(budgets[suppsorted]))
-    isnothing(edgevoter) && return sum(utils)
-    return sum(utils[suppsorted[1:edgevoter]])
+    isnothing(edgevoter) && return sum(budgets .* utils)
+    return sum((budgets .* utils)[suppsorted[1:edgevoter]])
 end
 
 function linearutilities(budgets, T)
@@ -228,14 +395,7 @@ end
 
 function allocate!(budgets, utils, q; current=true)
     uwrk = current ? budgets.*utils : utils
-    suppsorted = sortperm(uwrk, rev=true)
-    edgevoter = findfirst(r -> r ≥ q, cumsum(budgets[suppsorted]))
-
-    if isnothing(edgevoter)
-        edgeutil = 0
-    else
-        edgeutil = uwrk[suppsorted[edgevoter]]
-    end
+    edgeutil = bucklinprice(budgets, uwrk, q)
 
     #if a quota is not reached, largest remainders
     votersabove = (uwrk .> edgeutil)

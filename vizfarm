@@ -26,7 +26,7 @@ end
 
 # ╔═╡ 497805a7-82a2-442d-891a-c7026016d227
 begin
-	df = DataFrame(CSV.File("droop.csv"))
+	df = DataFrame(CSV.File("bigdroop.csv"))
 	filter!(row -> all(x -> !(x isa Number && isnan(x)), row), df)
 end
 
@@ -1472,13 +1472,13 @@ version = "3.5.0+0"
 
 # ╔═╡ Cell order:
 # ╟─5dba1490-a267-11ec-1cdb-4b6f2de0a68d
-# ╟─497805a7-82a2-442d-891a-c7026016d227
+# ╠═497805a7-82a2-442d-891a-c7026016d227
 # ╟─a765bac6-46a0-443c-ad43-8d57ebbe0134
 # ╟─d6f435c7-9906-4070-b3c2-b8b3380c4201
 # ╟─4ba6c483-95f8-42de-b250-42d29956c4b4
 # ╟─8f7a19f8-1fbc-46c6-82aa-fe85dad2bba7
 # ╟─6e7e084d-638e-4199-83d1-2cd51c53762f
-# ╟─8bc6b2ec-f8b7-4891-9cab-9942440ac7b2
+# ╠═8bc6b2ec-f8b7-4891-9cab-9942440ac7b2
 # ╟─6f7940d9-67cc-4a28-a053-3057dcf627c6
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002

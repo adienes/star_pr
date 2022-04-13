@@ -23,6 +23,7 @@ begin
 	using JuMP
 	using Clp
 	using Ipopt
+	using SpecialFunctions
 	
 	using DataFrames
 	using CSV
@@ -54,15 +55,17 @@ The voting rules and metrics are chosen only for illustration purposes. There ar
 
 # ╔═╡ a450a606-cefe-4702-a86c-d48dd2e69849
 begin
-	(k, V, C) = (5, 4000, 200)
+	(k, V, C) = (6, 2000, 120)
 	b = SpatialElection{2}(k, V, C) #Visualization for Spatial only
+	println([sqrt(p.λ) for p in b.E.L])
 	cast!(b)
 	S = b.S
 	gen;
-	
-	meswinners = MES_ExMQ(S, k) #'X'
-	ssswinners = SSS(S, k) #'O'
-	stvwinners = AS(S, k) #'#'
+
+	q = V/k
+	meswinners = DRB1(S, k; q = q) #'X'
+	ssswinners = maximinize(S, k) #'O'
+	stvwinners = MES_ExMQ(S, k; q = q) #'#'
 	
 	# DataFrame(Dict(:Method => ["MES", "SSS", "STV"], :MaxPhrag => [maxphrag(S, meswinners), maxphrag(S, ssswinners)], :CoreStable => [coreprice(S, meswinners), coreprice(S, ssswinners)]))
 end
@@ -70,6 +73,7 @@ end
 # ╔═╡ c59caae4-ecad-43b3-ae31-2327d53fb3fd
 begin
 		scatter(reduce(hcat, b.latentvoters), color = [-1; b.partyaffiliation[2:end]], markersize=2)
+		#scatter!(reduce(hcat, b.latentcands), markersize=6)
 		scatter!(reduce(hcat, b.latentcands[meswinners]), color=:black, marker='X', markersize=24)
 		scatter!(reduce(hcat, b.latentcands[ssswinners]), color=:black, marker='O', markersize=24)
 		scatter!(reduce(hcat, b.latentcands[stvwinners]), color=:black, marker='#', markersize=24)
@@ -90,6 +94,7 @@ JuMP = "4076af6c-e467-56ae-b986-b466b2749572"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
 
 [compat]
 CSV = "~0.10.3"
@@ -101,6 +106,7 @@ Distributions = "~0.25.49"
 Ipopt = "~1.0.2"
 JuMP = "~0.23.1"
 PlutoUI = "~0.7.37"
+SpecialFunctions = "~2.1.4"
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000002

@@ -48,7 +48,7 @@ function frontrunner_bullets(S, W; voters=[])
     V,C = size(S_trat)
     for v in voters
         S_trat[v, :] .= zeros(C)
-        adjusted_mean_frontrunner_utility = (1 + sum(S[v, W]))/(1 + length(W))
+        adjusted_mean_frontrunner_utility = (0.75 + sum(S[v, W]))/(0.75 + length(W))
         S_trat[v, S[v, :] .≥ adjusted_mean_frontrunner_utility] .= 1
     end
     return S_trat

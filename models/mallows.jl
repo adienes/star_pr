@@ -45,7 +45,7 @@ function getvoter(P::MallowsParty)
     return r
 end
 
-function getcands(B::MallowsElection)
+function getcands(B::MallowsElection; voters=Vector{Float64}[])
     return collect(1:B.E.C)
 end
 

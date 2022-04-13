@@ -28,7 +28,7 @@ struct PartyElectorate
     end
 end
 
-function randparties(partysampler::Function; rangepartynum = 2:5)
+function randparties(partysampler::Function; rangepartynum = 2:7)
     M = rand([j for j in rangepartynum])
     Q = rand(Dirichlet(ones(M)*8/M))
     L = [partysampler() for j in 1:M]
@@ -55,7 +55,7 @@ function cast!(B::Election)
         push!(voter_strategy, vs)
         push!(voter_latent, vl)
     end
-    cands_latent = getcands(B)
+    cands_latent = getcands(B; voters=voter_latent)
 
     S_incere = zeros(Float64, E.V, E.C)
     for j=1:E.C, i=1:E.V
@@ -120,12 +120,9 @@ function telos_linf_unichlet(V, C)
 end
 
 function normalizescores(S)
-    #nzrows = findall(i -> !i, iszero.(eachrow(S)))
-    #nzcols = findall(i -> !i, iszero.(eachcol(S)))
-    #S = S[nzrows, nzcols]
-
     mins = mapslices(r -> minimum(r), S, dims=2)
     maxs = mapslices(r -> maximum(r), S, dims=2)
-
-    return (S .- mins) ./ (maxs - mins)
+    temp = (S .- mins) ./ (maxs - mins)
+    temp[isnan.(temp)] .= 0
+    return temp
 end

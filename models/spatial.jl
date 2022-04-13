@@ -8,10 +8,10 @@ struct SpatialParty{N} <: Party
     ω::Float64 #proportion of strategic voters
 
     function SpatialParty{N}() where {N}
-        μ = (rand(N) + rand(N) + rand(N))*2/3 .- 1 #centrist bias on [-1, +1]
-        σ = (rand(N) + rand(N))*0.06
+        μ = (rand(N) + rand(N)) .- 1
+        σ = (rand(N)) .* 0.06
 
-        λ = rand()*0.3 + 0.12
+        λ = rand()*0.8+0.04
         new{N}(μ, σ, λ)
     end
 end
@@ -37,13 +37,20 @@ function getvoter(P::SpatialParty)
     return rand.([Normal(x...) for x in zip(P.μ, P.σ)])
 end
 
-function getcands(B::SpatialElection)
+function getcands(B::SpatialElection; voters=Vector{Float64}[])
     E = B.E
     degressive_population = sqrt.(E.Q)/sum(sqrt.(E.Q))
     party_sampler = Categorical(degressive_population)
-    return [getvoter(E.L[rand(party_sampler)]) for j in 1:E.C]
+    cands = Vector{Float64}[]
+    for _ in 1:fld(E.C, 2)
+        P = E.L[rand(party_sampler)]
+        push!(cands, rand.([Normal(μ, 3.6*σ) for (μ, σ) in zip(P.μ, P.σ)]))
+        push!(cands, rand.([Normal(μ, 0.8*σ) for (μ, σ) in zip(P.μ, P.σ)]))
+    end
+    return cands
 end
 
 function ξ(P::SpatialParty, v, c)
-    return 2/(1 + exp(euclidean(v,c)/P.λ))
+    x = euclidean(v,c)
+    return max(0, 1 - x/P.λ)
 end
